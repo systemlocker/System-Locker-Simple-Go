@@ -86,23 +86,24 @@ user completes Google sign-in and receives a system-specific password
 the user transcribes the generated password into your login form and you
 simply retry.
 
+Deliver the portal link to your user through your own channel (API response,
+email, chat).
+
 ```go
 if _, err := client.AuthenticateWithPassword(ctx, username, password); err != nil {
     if simpleErr, isSso := err.(*simple.Error); isSso && simpleErr.Kind == simple.ErrSSO {
         // sso / ssoexp / ssowrong — the portal URL is embedded in the error.
         portal := simple.SSOLink(err)
-        if !simple.OpenURL(portal) {
-            fmt.Println("Finish Google sign-in at:", portal) // headless fallback
-        }
+        sendToUser(user, portal) // your channel: API response, email, chat…
         return
     }
     return // any other denial
 }
 ```
 
-You can also start the flow before any denial: `client.BeginGoogleSso()`
-(or `simple.BeginGoogleSso(systemID)`) opens the portal and returns the URL
-plus whether a browser actually launched.
+`simple.GoogleSsoURL(systemID)` (or `client.GoogleSsoURL()`) builds the
+same portal URL before any denial, if you already know the account signs in
+through Google.
 
 ## Device identifiers (HWID)
 
