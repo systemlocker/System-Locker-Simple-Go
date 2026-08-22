@@ -76,6 +76,34 @@ keys, _  := client.Management().GenerateKeys(ctx, simple.ExpiryOneMonth, 10, "ju
 `Management` wraps `POST /api/v1`: key status/expiration, HWID resets
 (single/admin or whole-system), key generation, bans, expiry adjustment.
 
+## Google SSO (account authentication)
+
+Accounts created through Google sign-in have no local password on the
+server. A `username`/`password` check for such an account fails with an
+`sso`, `ssoexp`, or `ssowrong` reason that embeds the portal URL where the
+user completes Google sign-in and receives a system-specific password
+(valid 180 days) to use as their account password. There is no callback;
+the user transcribes the generated password into your login form and you
+simply retry.
+
+```go
+if _, err := client.AuthenticateWithPassword(ctx, username, password); err != nil {
+    if simpleErr, isSso := err.(*simple.Error); isSso && simpleErr.Kind == simple.ErrSSO {
+        // sso / ssoexp / ssowrong — the portal URL is embedded in the error.
+        portal := simple.SSOLink(err)
+        if !simple.OpenURL(portal) {
+            fmt.Println("Finish Google sign-in at:", portal) // headless fallback
+        }
+        return
+    }
+    return // any other denial
+}
+```
+
+You can also start the flow before any denial: `client.BeginGoogleSso()`
+(or `simple.BeginGoogleSso(systemID)`) opens the portal and returns the URL
+plus whether a browser actually launched.
+
 ## Device identifiers (HWID)
 
 The library derives a hardware ID by default. To provide your own stable ID:
