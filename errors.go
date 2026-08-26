@@ -20,6 +20,11 @@ const (
 	// ErrSSO means the account requires Google SSO handling; the portal
 	// link is in the error.
 	ErrSSO
+	// ErrLocalFailure means a local subsystem needed by the request
+	// failed — currently only the opt-in SL-HWID module (for example
+	// hardware drifted past its recovery threshold, requiring
+	// re-activation).
+	ErrLocalFailure
 	// ErrUnknownReason means the server returned a 2xx failure with a
 	// reason this library does not recognize; the raw reason is carried.
 	ErrUnknownReason
@@ -37,6 +42,8 @@ func (k ErrorKind) String() string {
 		return "Denied"
 	case ErrSSO:
 		return "SSO"
+	case ErrLocalFailure:
+		return "LocalFailure"
 	case ErrUnknownReason:
 		return "UnknownReason"
 	default:

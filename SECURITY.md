@@ -20,10 +20,29 @@ What the library still does for you:
 
 ## Keep in mind
 
-- `hwid` locking is exact-match; supply a stable value or use the `hwid`
-  package's hardware composition.
+- `hwid` locking is exact-match by default: the legacy hardware hash changes
+  when the underlying hardware does. The opt-in SL-HWID mode (see below)
+  tolerates minor hardware drift instead.
 - The management API key grants key generation, bans, and expiry changes —
   keep it on servers you control.
+
+## SL-HWID module (opt-in)
+
+The opt-in threshold HWID mode (`HWIDMode = "sl-hwid"`) makes copied state
+and casual spoofing harder by requiring a stored enrollment plus enough
+current factors. Our objective is to reduce HWID churn from minor hardware
+changes, without reducing the strength of HWID as a locking mechanism. The
+key itself is never persisted. The module wipes key material
+deterministically after use, matching the rest of this client.
+
+Applications using the same store share one enrollment and HWID — that is
+deliberate, so a launcher and the program it opens report one device
+identity. Protect that store and choose a separate explicit store when
+isolation is required.
+
+The module changes the device identifier only. Simple responses remain
+unsigned; on a hostile machine an attacker can still forge results
+regardless of the HWID mode.
 
 ## Reporting a vulnerability
 

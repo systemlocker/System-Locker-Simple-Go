@@ -2,8 +2,12 @@ package simple
 
 import (
 	"context"
+	"fmt"
 	"net/url"
 	"strings"
+	"sync"
+
+	"github.com/systemlocker/system-locker-simple-go/slhwid"
 )
 
 const (
@@ -60,6 +64,23 @@ func (o ResetOutcome) String() string {
 type Client struct {
 	config Config
 	http   HTTPClient
+
+	mutex         sync.Mutex
+	slhwidSession slhwidSession
+}
+
+// slhwidSession is the slice of the SL-HWID session the client needs; the
+// indirection keeps the module swappable in tests without exposing test
+// hooks publicly.
+type slhwidSession interface {
+	HWID() string
+	Commit() error
+}
+
+// slHwidPrepare is swappable so tests can drive the SL-HWID module without
+// touching real hardware or storage.
+var slHwidPrepare = func(opts slhwid.Options) (slhwidSession, error) {
+	return slhwid.Prepare(opts)
 }
 
 // Option customizes NewClient.
@@ -72,6 +93,9 @@ func WithHTTPClient(http HTTPClient) Option {
 
 // NewClient validates the configuration and returns a ready Client.
 func NewClient(config Config, options ...Option) (*Client, error) {
+	if config.HWIDMode != "" && config.HWIDMode != "legacy" && config.HWIDMode != "sl-hwid" {
+		return nil, configurationError("HWIDMode must be \"legacy\" or \"sl-hwid\".")
+	}
 	if err := resolveDefaultHWID(&config); err != nil {
 		return nil, configurationError("Could not derive the default hardware ID: %v. Supply a custom HWID or use \"1\" to disable device checks.", err)
 	}
@@ -84,7 +108,7 @@ func NewClient(config Config, options ...Option) (*Client, error) {
 	if !strings.HasPrefix(config.BaseURL, "https://") {
 		return nil, configurationError("Base URL must use HTTPS.")
 	}
-	client := &Client{config: config}
+	client := &Client{config: config.clone()}
 	for _, option := range options {
 		option(client)
 	}
@@ -95,7 +119,7 @@ func NewClient(config Config, options ...Option) (*Client, error) {
 }
 
 // Config returns the configuration.
-func (c *Client) Config() Config { return c.config }
+func (c *Client) Config() Config { return c.config.clone() }
 
 func (c *Client) endpoint(path string) string {
 	if strings.HasSuffix(c.config.BaseURL, "/") {
@@ -116,23 +140,66 @@ func (c *Client) request(ctx context.Context, path string, fields url.Values) (s
 	return strings.TrimSpace(response.Body), response, nil
 }
 
-func (c *Client) baseFields() url.Values {
+// resolveHWID returns the HWID for outgoing requests. The legacy mode (and
+// any explicit value) was already resolved at construction; "sl-hwid"
+// enrolls or recovers lazily here, on the first request, and caches the
+// session so a later successful authentication can commit a refresh.
+func (c *Client) resolveHWID() (string, error) {
+	if c.config.HWID != "" {
+		return c.config.HWID, nil
+	}
+	c.mutex.Lock()
+	defer c.mutex.Unlock()
+	if c.slhwidSession != nil {
+		return c.slhwidSession.HWID(), nil
+	}
+	session, err := slHwidPrepare(slhwid.Options{
+		StorePath:      c.config.SLHwidStore,
+		ExtraMandatory: c.config.SLHwidExtraMandatory,
+	})
+	if err != nil {
+		return "", &Error{Kind: ErrLocalFailure, Message: fmt.Sprintf("SL-HWID unavailable: %v", err)}
+	}
+	c.slhwidSession = session
+	return session.HWID(), nil
+}
+
+// commitHwid re-centers the SL-HWID shares on the hardware observed this
+// launch. It runs only after the server accepted an authentication; failures
+// are non-fatal — the next launch re-derives.
+func (c *Client) commitHwid() {
+	c.mutex.Lock()
+	session := c.slhwidSession
+	c.mutex.Unlock()
+	if session != nil {
+		_ = session.Commit()
+	}
+}
+
+func (c *Client) baseFields() (url.Values, error) {
+	hwidValue, err := c.resolveHWID()
+	if err != nil {
+		return nil, err
+	}
 	fields := url.Values{
 		"system":  {c.config.SystemID},
 		"version": {c.config.Version},
-		"hwid":    {c.config.HWID},
+		"hwid":    {hwidValue},
 		"clean":   {"1"},
 	}
 	if c.config.ProgramDigest != "" {
 		fields.Set("digest", c.config.ProgramDigest)
 	}
-	return fields
+	return fields, nil
 }
 
 // AuthenticateWithKey checks a license key (mikros mode). It returns true
 // only when the server answers literally "true".
 func (c *Client) AuthenticateWithKey(ctx context.Context, licenseKey string) (bool, error) {
-	fields := c.baseFields()
+	fields, err := c.baseFields()
+	if err != nil {
+		return false, err
+	}
 	fields.Set("key", licenseKey)
 	return c.authenticate(ctx, fields)
 }
@@ -140,7 +207,10 @@ func (c *Client) AuthenticateWithKey(ctx context.Context, licenseKey string) (bo
 // AuthenticateWithPassword checks username + password credentials (goliath
 // mode).
 func (c *Client) AuthenticateWithPassword(ctx context.Context, username, password string) (bool, error) {
-	fields := c.baseFields()
+	fields, err := c.baseFields()
+	if err != nil {
+		return false, err
+	}
 	fields.Set("username", username)
 	fields.Set("password", password)
 	return c.authenticate(ctx, fields)
@@ -152,6 +222,8 @@ func (c *Client) authenticate(ctx context.Context, fields url.Values) (bool, err
 		return false, err
 	}
 	if body == "true" {
+		// The server accepted this identity on this device.
+		c.commitHwid()
 		return true, nil
 	}
 	return false, classify(body)
@@ -159,7 +231,10 @@ func (c *Client) authenticate(ctx context.Context, fields url.Values) (bool, err
 
 // KeyExpirationForKey returns the expiry of a license key.
 func (c *Client) KeyExpirationForKey(ctx context.Context, licenseKey string) (Expiration, error) {
-	fields := c.baseFields()
+	fields, err := c.baseFields()
+	if err != nil {
+		return Expiration{}, err
+	}
 	fields.Set("key", licenseKey)
 	fields.Set("intent", "expiration")
 	return c.expiration(ctx, fields)
@@ -168,7 +243,10 @@ func (c *Client) KeyExpirationForKey(ctx context.Context, licenseKey string) (Ex
 // KeyExpirationForPassword returns the expiry of the authenticated user's
 // key for this system.
 func (c *Client) KeyExpirationForPassword(ctx context.Context, username, password string) (Expiration, error) {
-	fields := c.baseFields()
+	fields, err := c.baseFields()
+	if err != nil {
+		return Expiration{}, err
+	}
 	fields.Set("username", username)
 	fields.Set("password", password)
 	fields.Set("intent", "expiration")
@@ -223,7 +301,10 @@ func (c *Client) GetVariable(ctx context.Context, name string, licenseKey ...str
 // ResetHwidForKey clears the HWID bound to a license key (self-service;
 // per-system flag and a 30-day cooldown apply).
 func (c *Client) ResetHwidForKey(ctx context.Context, licenseKey string) (ResetOutcome, error) {
-	fields := c.baseFields()
+	fields, err := c.baseFields()
+	if err != nil {
+		return ResetDenied, err
+	}
 	fields.Set("key", licenseKey)
 	fields.Set("intent", "hwidreset")
 	return c.resetHwid(ctx, fields)
@@ -231,7 +312,10 @@ func (c *Client) ResetHwidForKey(ctx context.Context, licenseKey string) (ResetO
 
 // ResetHwidForPassword clears the HWID of the authenticated user's key.
 func (c *Client) ResetHwidForPassword(ctx context.Context, username, password string) (ResetOutcome, error) {
-	fields := c.baseFields()
+	fields, err := c.baseFields()
+	if err != nil {
+		return ResetDenied, err
+	}
 	fields.Set("username", username)
 	fields.Set("password", password)
 	fields.Set("intent", "hwidreset")
