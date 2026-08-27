@@ -29,10 +29,11 @@ func (r HTTPResponse) Header(name string) string {
 	return r.Headers[strings.ToLower(name)]
 }
 
-// HTTPClient abstracts the POST operation the protocol uses. Inject a fake
+// HTTPClient abstracts the HTTP operations the protocol uses. Inject a fake
 // in tests.
 type HTTPClient interface {
 	PostForm(ctx context.Context, rawURL string, fields url.Values) HTTPResponse
+	Get(ctx context.Context, rawURL string, headers map[string]string) HTTPResponse
 }
 
 // DefaultHTTPClient performs real requests with net/http.
@@ -81,6 +82,40 @@ func (d *DefaultHTTPClient) PostForm(ctx context.Context, rawURL string, fields 
 		}
 	}
 	return HTTPResponse{StatusCode: resp.StatusCode, Body: string(body), Headers: headers}
+}
+
+// Get sends a GET with the supplied headers. The Simple protocol itself is
+// POST-only; GET exists for the Invisible Folder module.
+func (d *DefaultHTTPClient) Get(ctx context.Context, rawURL string, headers map[string]string) HTTPResponse {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
+	if err != nil {
+		return HTTPResponse{Err: err}
+	}
+	for name, value := range headers {
+		req.Header.Set(name, value)
+	}
+	if d.Agent != "" {
+		req.Header.Set("User-Agent", d.Agent)
+	}
+	resp, err := d.HTTP.Do(req)
+	if err != nil {
+		return HTTPResponse{Err: err}
+	}
+	defer resp.Body.Close()
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 1024*1024+1))
+	if err != nil {
+		return HTTPResponse{StatusCode: resp.StatusCode, Err: err}
+	}
+	if len(body) > 1024*1024 {
+		return HTTPResponse{StatusCode: resp.StatusCode, Err: io.ErrUnexpectedEOF}
+	}
+	responseHeaders := make(map[string]string, len(resp.Header))
+	for name, values := range resp.Header {
+		if len(values) > 0 {
+			responseHeaders[strings.ToLower(name)] = values[0]
+		}
+	}
+	return HTTPResponse{StatusCode: resp.StatusCode, Body: string(body), Headers: responseHeaders}
 }
 
 var _ HTTPClient = (*DefaultHTTPClient)(nil)

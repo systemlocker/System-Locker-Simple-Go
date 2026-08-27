@@ -53,12 +53,21 @@ type Config struct {
 	// https://systemlocker.net. HTTPS is enforced.
 	BaseURL string
 
+	// InvisibleFolderBaseURL is the Invisible Folder root. Default
+	// https://invisiblefolder.net. HTTPS is enforced.
+	InvisibleFolderBaseURL string
+
 	// UserAgent identifies the client to the server.
 	UserAgent string
 
 	// ProgramDigest, when set, is checked against the system's expected
 	// program digest.
 	ProgramDigest string
+
+	// InvisibleFolderAPIKey is only required to read Invisible Folder
+	// metadata for API Available, Password Protected, and System Locker
+	// Simple files.
+	InvisibleFolderAPIKey string
 
 	// APIKey is the management API key. Only needed for the Management
 	// sub-API.
@@ -69,11 +78,12 @@ type Config struct {
 // and Version on the result before constructing a Client.
 func DefaultConfig() Config {
 	return Config{
-		HWID:           "",
-		HWIDMode:       "legacy",
-		RequestTimeout: 15 * time.Second,
-		BaseURL:        "https://systemlocker.net",
-		UserAgent:      "systemlocker-simple-go/0.2",
+		HWID:                   "",
+		HWIDMode:               "legacy",
+		RequestTimeout:         15 * time.Second,
+		BaseURL:                "https://systemlocker.net",
+		InvisibleFolderBaseURL: "https://invisiblefolder.net",
+		UserAgent:              "systemlocker-simple-go/1.0.0",
 	}
 }
 

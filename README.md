@@ -2,9 +2,9 @@
 
 Official Go client for the **System Locker Simple** protocol (`POST /auth`):
 one request, one answer. No sessions, no heartbeats, no signatures — the
-right fit when the machine running the check is one you control (Threat
-Model 2). For software distributed to untrusted machines, use a **Bedrock**
-client instead: it verifies an Ed25519 signature on every response.
+right fit when the machine running the check is one you control. For
+software distributed to untrusted machines, use a **Bedrock** client
+instead: it verifies an Ed25519 signature on every response.
 
 ## Install
 
@@ -22,7 +22,6 @@ package main
 import (
     "context"
     "fmt"
-
     "github.com/systemlocker/system-locker-simple-go"
 )
 

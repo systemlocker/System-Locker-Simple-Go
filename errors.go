@@ -11,8 +11,9 @@ const (
 	// ErrTransport means the HTTP exchange failed or returned a non-2xx
 	// status.
 	ErrTransport
-	// ErrServer means the server reported an internal database error
-	// (reason "dbe").
+	// ErrServer means the server misbehaved: an internal database error
+	// (reason "dbe") or — for the Invisible Folder module — a 2xx response
+	// this library could not parse.
 	ErrServer
 	// ErrDenied means the server rejected the request for a known,
 	// license-related reason (frozen key, banned HWID, bad credentials…).
