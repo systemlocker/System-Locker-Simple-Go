@@ -83,7 +83,7 @@ func DefaultConfig() Config {
 		RequestTimeout:         15 * time.Second,
 		BaseURL:                "https://systemlocker.net",
 		InvisibleFolderBaseURL: "https://invisiblefolder.net",
-		UserAgent:              "systemlocker-simple-go/1.0.0",
+		UserAgent:              "systemlocker-simple-go/1.1.0",
 	}
 }
 
