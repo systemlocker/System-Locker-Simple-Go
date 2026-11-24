@@ -9,8 +9,11 @@ instead: it verifies an Ed25519 signature on every response.
 ## Install
 
 ```sh
-go get github.com/systemlocker/system-locker-simple-go
+go get github.com/systemlocker/system-locker-simple-go/v2@v2.0.0
 ```
+
+Upgrading from v1: add `/v2` to the module path in your imports, before any
+subpackage such as `/hwid` or `/slhwid`.
 
 No third-party dependencies — standard library only.
 
@@ -22,7 +25,7 @@ package main
 import (
     "context"
     "fmt"
-    "github.com/systemlocker/system-locker-simple-go"
+    "github.com/systemlocker/system-locker-simple-go/v2"
 )
 
 func main() {
@@ -67,14 +70,37 @@ if the server emits something new.
 
 ```go
 client, _ := simple.NewClient(config)
-config.APIKey = "…" // management key — keep it on your server
+config.APIKey = "…" // v2 bearer credential — keep it on your server
 
 count, _ := client.Management().RedeemedUserCount(ctx)
 keys, _  := client.Management().GenerateKeys(ctx, simple.ExpiryOneMonth, 10, "june-batch")
 ```
 
-`Management` wraps `POST /api/v1`: key status/expiration, HWID resets
-(single/admin or whole-system), key generation, bans, expiry adjustment.
+Management uses the Management API v2 (`/api/v2`). Set `Config.APIKey` to a
+scoped `slm_…` bearer credential created for this system, and keep it on
+servers you control. Authentication does not use it.
+
+`Permissions(ctx)` lists the credential's scopes, and `Request(ctx, method, path, data)` calls any v2
+resource path, such as `/systems/{systemId}/nightflyer`, returning
+the response's `data` as a `json.RawMessage`. The server enforces each credential's scopes.
+A non-2xx response returns an `*Error` whose `Reason` is the server's error code, such as `INSUFFICIENT_SCOPE`.
+
+| Helper | Scope |
+| --- | --- |
+| User count (refreshed periodically by the server) | `systems.read` |
+| Key status (`user`, `mikros` or `unclaimed`) and expiry | `keys.read` |
+| Key generation (duration presets start at redemption; one key per line) | `keys.create` |
+| Administrative HWID resets and `AddTime(ctx, license, seconds)` | `keys.update` |
+| Key deletion | `keys.delete` |
+
+Mutation helpers return the response's JSON data as text. A key with no
+fixed expiry is reported as permanent only once redeemed: an unredeemed
+duration key has no expiry timestamp yet either.
+
+**Upgrading from the previous management API:** `ResetHwid(ctx, license)` no longer takes an `asAdmin` argument; self-service resets
+stay on `Client.ResetHwidForKey`. `AdjustExpiry` has been removed because there is no
+equivalent v2 operation — use `AddTime(ctx, license, seconds)` to extend a key instead.
+Custom `HTTPClient` implementations must also implement `JSONHTTPClient` (`RequestJSON`) to use management; form-only transports keep working for authentication.
 
 ## Google SSO (account authentication)
 
@@ -110,7 +136,7 @@ through Google.
 The default derivation is a plain hardware hash:
 
 ```go
-import "github.com/systemlocker/system-locker-simple-go/hwid"
+import "github.com/systemlocker/system-locker-simple-go/v2/hwid"
 
 config.HWID, _ = hwid.DeviceHWID()
 ```

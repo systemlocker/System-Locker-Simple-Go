@@ -5,7 +5,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/systemlocker/system-locker-simple-go"
+	"github.com/systemlocker/system-locker-simple-go/v2"
 )
 
 func main() {

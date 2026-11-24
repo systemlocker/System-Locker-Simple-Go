@@ -8,7 +8,7 @@ package simple
 import (
 	"time"
 
-	"github.com/systemlocker/system-locker-simple-go/hwid"
+	"github.com/systemlocker/system-locker-simple-go/v2/hwid"
 )
 
 // Config configures a Simple Client.
@@ -69,7 +69,7 @@ type Config struct {
 	// Simple files.
 	InvisibleFolderAPIKey string
 
-	// APIKey is the management API key. Only needed for the Management
+	// APIKey is the v2 management bearer credential. Only needed for the Management
 	// sub-API.
 	APIKey string
 }
@@ -83,7 +83,7 @@ func DefaultConfig() Config {
 		RequestTimeout:         15 * time.Second,
 		BaseURL:                "https://systemlocker.net",
 		InvisibleFolderBaseURL: "https://invisiblefolder.net",
-		UserAgent:              "systemlocker-simple-go/1.2.0",
+		UserAgent:              "systemlocker-simple-go/2.0.0",
 	}
 }
 

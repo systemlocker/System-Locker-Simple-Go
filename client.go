@@ -7,7 +7,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/systemlocker/system-locker-simple-go/slhwid"
+	"github.com/systemlocker/system-locker-simple-go/v2/slhwid"
 )
 
 const (

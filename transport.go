@@ -2,6 +2,7 @@ package simple
 
 import (
 	"context"
+	"encoding/json"
 	"io"
 	"net/http"
 	"net/url"
@@ -87,9 +88,25 @@ func (d *DefaultHTTPClient) PostForm(ctx context.Context, rawURL string, fields 
 // Get sends a GET with the supplied headers. The Simple protocol itself is
 // POST-only; GET exists for the Invisible Folder module.
 func (d *DefaultHTTPClient) Get(ctx context.Context, rawURL string, headers map[string]string) HTTPResponse {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
+	return d.RequestJSON(ctx, http.MethodGet, rawURL, nil, headers)
+}
+
+// RequestJSON sends Management API requests without changing authentication's form encoding.
+func (d *DefaultHTTPClient) RequestJSON(ctx context.Context, method, rawURL string, data any, headers map[string]string) HTTPResponse {
+	var bodyReader io.Reader
+	if data != nil {
+		encoded, err := json.Marshal(data)
+		if err != nil {
+			return HTTPResponse{Err: err}
+		}
+		bodyReader = strings.NewReader(string(encoded))
+	}
+	req, err := http.NewRequestWithContext(ctx, method, rawURL, bodyReader)
 	if err != nil {
 		return HTTPResponse{Err: err}
+	}
+	if data != nil {
+		req.Header.Set("Content-Type", "application/json")
 	}
 	for name, value := range headers {
 		req.Header.Set(name, value)
